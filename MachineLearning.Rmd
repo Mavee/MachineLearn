@@ -1,0 +1,123 @@
+# Data Science Machine Learning Course Project 1
+
+### This report describes the prediction model for predicting the manner in which fitness exercises were done using data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways and stored in the variable 'classe' in the Training dataset.  
+
+### The training data for this project are available here: 
+
+(https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+### The test data are available here: 
+
+(https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+Training and Test datasets are download from the URL links and stored in the local working directory.
+
+## Exploratory Analysis
+```{r cache=TRUE}
+library(caret)
+library(randomForest)
+#load Testing Dataset
+cdata1 <- read.csv("./pml-testing.csv",sep=",")  
+#Training Data
+cdata <- read.csv("./pml-training.csv", sep = ",")
+```
+
+Note the variables in the Test and the Train datasets.  Train dataset contains the predicted outcome in 'classe' variable whereas the test set includes a problem_id.  There were 19622 and 20 observations in the Train and Test datasets respectively.
+```{r eval=FALSE}
+names(cdata) #column names of Train
+names(cdata1) #column names of Test
+```
+```{r}
+dim(cdata)
+dim(cdata1) 
+```
+
+## Preprocessing
+Initial preprocessing done to optimize the feature selection.  There were a large number of feature variables with NA data values.  Therefore the variable columns with NA data were removed.  This reduced the dataset features to use in the model and helped speed the model generation.
+```{r}
+colEval <-  data.frame(colSums(is.na(cdata1))) 
+tmpfinal <- data.frame(cbind('features'=rownames(colEval),'total'=colEval[,1]))  #create a df with the 2 columns - 1st-rows with feature names,2nd-sum of NAs
+finalnames <- as.character(tmpfinal[tmpfinal$total=="0",1]) #extract column names without NA values
+numfinal <- length(finalnames)
+finalnames1 <- finalnames[1:numfinal-1] #remove last col name 
+
+#Train data with selected features
+tmp <- cdata1[,finalnames1] 
+last1 <- dim(cdata1)[2]
+CTest <- cbind(tmp,'problem_id'=cdata1[,last1])
+
+
+#Test data with selected features  
+tmp <- cdata[,finalnames1]
+last1 <- dim(cdata)[2]
+CTrain <- cbind(tmp,'classe'=cdata[,last1])
+```    
+
+On further review of the selected features with the Str function, observed that the dataset included factor variables that needed more evaluation.  
+```{r}
+str(CTrain)
+```
+
+On determining that these factor variables were not significant predictors. They would need further transformations to avoid problems while using in randomForest functions.  Therefore, the datasets were further trimmed to remove these variables (columns 1 to 6 in CTrain and CTest) and the final list of features selected is shown below.
+```{r}
+CTrainw <- droplevels(CTrain[,c(-1,-2,-3,-4,-5,-6)])
+CTestw <- droplevels(CTest[,c(-1,-2,-3,-4,-5,-6)])
+names(CTrainw) # classe variable being the predicted/outcome variable.
+```
+
+
+## Cross Validaton
+Cross validation was done through the k-fold method where k=2 on the training data, predict the model on one sample of training data and use the prediction on the 2nd training sample. Choosing a smaller k value introduces more bias but less variance.
+```{r}
+library(caret)
+set.seed(23232)
+folds <- createFolds(y=CTrainw$classe,k=2,list=TRUE,returnTrain=TRUE)
+head(folds$Fold1) #first fold indices
+head(folds$Fold2) #second fold indices
+```
+
+```{r}
+CTrain1 <- droplevels(CTrainw[folds$Fold1,])
+CTrain2 <- droplevels(CTrainw[folds$Fold2,])
+```
+
+
+## Model Selection
+The Random Forest model was chosen because this is a classification problem and Random Forest predict classifications with high accuracy. Therefore RandomForest function would best predict the classes (A,B,C,D,E) in the data for correct and incorrect exercise performance.  Initially the train function was used but discarded due to the long processing times.  randomForest function was much faster and this model was run against subset of the variables selected above.
+
+```{r}
+library(randomForest)
+#Model created against the Train Sample1/fold1 data
+rfor <- randomForest(classe~.,data=CTrain1)
+#Initial prediction on the Train Sample2/fold2 data
+pred <- predict(rfor,CTrain2)
+```
+
+The Random Forest model 'rfor' was then used to predict the data in the test set.
+```{r}
+set.seed(123)
+pred2 <- predict(rfor,newdata=CTest)
+
+#Prediction values for the test dataset
+pred2
+```
+
+
+## Out of Sample errors
+In random forests, there is no need for cross-validation or a separate test set to get an unbiased estimate of the test set error or out of sample error. It is estimated internally, during the run randomForest model as the oob(out of bag) error.  The out of sample/oob estimate is:
+```{r}
+rfor
+```
+Details on the class errors in the randomForest shown in the confusion matrix below:
+```{r}
+rfor$confusion
+```
+
+Confusion matrix for the predicted vs. actuals on the test data
+```{r}
+actuals <- c("B",  "A",  "B",  "A",  "A",  "E",  "D",  "B",  "A",  "A",  "B",  "C",  "B",  "A",  "E",  "E",  "A",  "B",  "B",  "B")
+confusionMatrix(pred2,actuals)
+```
+
+
+
+
